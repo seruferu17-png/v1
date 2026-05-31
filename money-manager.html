@@ -542,12 +542,14 @@ function loadDashboard(hasData=false){
   const pengeluaran=rows.filter(r=>r.jenis==='Pengeluaran').reduce((s,r)=>s+r.nominal,0);
   const kas=pemasukan-pengeluaran;
   // Hitung hari aktif & periode
-  const tgls=[...new Set(rows.map(r=>r.tanggal))].sort();
+  const tgls=[...new Set(rows.map(r=>r.tanggal))].filter(Boolean).sort((a,b)=>{
+    // Sort by actual date value regardless of format
+    return parseTgl(a)-parseTgl(b);
+  });
   const activeDays=tgls.length;
   let periodeStr='—';
   if(tgls.length){
-    const fmt=s=>{if(!s)return'';const p=s.split(/[-T]/);return`${p[2]}/${p[1]}/${p[0]}`;};
-    periodeStr=`${fmt(tgls[0])} — ${fmt(tgls[tgls.length-1])}`;
+    periodeStr=`${formatTgl(tgls[0])} — ${formatTgl(tgls[tgls.length-1])}`;
   }
   const totalDays=activeDays||1;
   // Pengeluaran per kategori (hanya flex)
@@ -557,7 +559,7 @@ function loadDashboard(hasData=false){
   });
   const byCatArr=Object.entries(byCat).map(([k,v])=>({kategori:k,nominal:v})).sort((a,b)=>b.nominal-a.nominal);
   const totalFlex=byCatArr.reduce((s,k)=>s+k.nominal,0);
-  const avgHarian=totalFlex/totalDays;
+  const avgHarian=Math.round(totalFlex/totalDays);
   avgDetailData={totalFleksibel:totalFlex,totalDays,avgHarian,byKategori:byCatArr};
 
   // Semua kategori pengeluaran untuk chart
@@ -684,7 +686,7 @@ function filterData(){
 function renderCards(rows){
   const el=document.getElementById('dataList');
   if(!rows.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><p>Belum ada data</p></div>';return;}
-  const sorted=[...rows].sort((a,b)=>b.tanggal.localeCompare(a.tanggal));
+  const sorted=[...rows].sort((a,b)=>parseTgl(b.tanggal)-parseTgl(a.tanggal));
   const totMasuk=rows.filter(r=>r.jenis==='Pemasukan').reduce((s,r)=>s+r.nominal,0);
   const totKeluar=rows.filter(r=>r.jenis==='Pengeluaran').reduce((s,r)=>s+r.nominal,0);
   const kas=totMasuk-totKeluar;
@@ -873,11 +875,27 @@ function rpShort(v){
   if(v>=1000)return(v/1000).toFixed(0)+'rb';
   return String(v);
 }
+function parseTgl(s){
+  if(!s)return 0;
+  if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){
+    const p=s.split('/');return new Date(p[2],p[1]-1,p[0]).getTime();
+  }
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)){
+    return new Date(s).getTime();
+  }
+  return 0;
+}
 function formatTgl(s){
   if(!s)return'—';
-  const p=s.split(/[-T]/);
-  if(p.length<3||Number(p[0])<1990)return'—';
-  return`${p[2]}/${p[1]}/${p[0]}`;
+  // Format DD/MM/YYYY (dari Google Sheets)
+  if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){
+    const p=s.split('/');return`${pad(p[0])}/${pad(p[1])}/${p[2]}`;
+  }
+  // Format YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)){
+    const p=s.split(/[-T]/);return`${p[2]}/${p[1]}/${p[0]}`;
+  }
+  return s;
 }
 function countUpShort(id,target,prefix=''){
   const el=document.getElementById(id);if(!el)return;
